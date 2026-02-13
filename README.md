@@ -25,6 +25,7 @@ This is a **fun little project** to practice Solidity development! It's a number
 - **Game duration**: 100 blocks
 - **Winners**: Players with numbers closest to the winning number share the pot equally
 - **One bet per address**
+- **Owner is trusted**
 
 ## Important Disclaimer
 

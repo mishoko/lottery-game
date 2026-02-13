@@ -29,6 +29,7 @@ contract Lottery {
     IERC20 public immutable dai;
     address public immutable owner;
     uint64 public startBlock;
+    bytes32 public commitment; // Hash of (winningNumber + secret)
 
     GameResult public result;
     uint256 public totalPlayers;
@@ -43,12 +44,14 @@ contract Lottery {
     error InvalidNumber();
     error AlreadyPlayed();
     error TransferFailed();
-    error AlreadyRevealed();
+    error InvalidReveal();
     error NoPlayers();
     error NotRevealed();
     error DidNotPlay();
     error AlreadyClaimed();
     error NotWinner();
+    error AlreadyCommitted();
+    error NotCommitted();
 
     constructor(address _dai) {
         owner = msg.sender;
@@ -70,34 +73,38 @@ contract Lottery {
         _;
     }
 
-    function start() external onlyOwner {
+    function start(bytes32 _commitment) external onlyOwner {
         require(startBlock == 0, AlreadyStarted());
+        require(_commitment != bytes32(0), NotCommitted());
         startBlock = uint64(block.number);
+        commitment = _commitment;
     }
 
     function bet(uint8 _luckyNumber) external duringGame {
         _validateNumber(_luckyNumber);
         require(!users[msg.sender].hasPlayed, AlreadyPlayed());
 
-        users[msg.sender] = UserInfo({
-            luckyNumber: _luckyNumber,
-            hasPlayed: true,
-            claimed: false
-        });
+        users[msg.sender] = UserInfo({luckyNumber: _luckyNumber, hasPlayed: true, claimed: false});
         numberToPlayers[_luckyNumber].push(msg.sender);
-        unchecked { ++totalPlayers; }
+        unchecked {
+            ++totalPlayers;
+        }
         require(dai.transferFrom(msg.sender, address(this), BET_AMOUNT), TransferFailed());
     }
 
-    function revealNumber(uint8 _winningNumber) external onlyOwner afterGame {
-        require(!result.isRevealed, AlreadyRevealed());
+    function revealNumber(uint8 _winningNumber, bytes32 _secret) external onlyOwner afterGame {
+        require(!result.isRevealed, InvalidReveal());
         _validateNumber(_winningNumber);
+
+        // Verify the reveal matches the commitment
+        bytes32 revealedHash = keccak256(abi.encodePacked(_winningNumber, _secret, msg.sender));
+        require(revealedHash == commitment, InvalidReveal());
 
         uint256 minDistance = type(uint256).max;
         uint256 winnerCount = 0;
 
         // Check all possible numbers MIN_NUMBER-MAX_NUMBER (constant MAX_NUMBER iterations vs O(n) players)
-        for (uint8 num = MIN_NUMBER; num <= MAX_NUMBER; ) {
+        for (uint8 num = MIN_NUMBER; num <= MAX_NUMBER;) {
             uint256 count = numberToPlayers[num].length;
             if (count > 0) {
                 uint256 distance = _distance(num, _winningNumber);
@@ -108,7 +115,9 @@ contract Lottery {
                     winnerCount += count;
                 }
             }
-            unchecked { ++num; }
+            unchecked {
+                ++num;
+            }
         }
 
         require(winnerCount > 0, NoPlayers());
@@ -140,12 +149,24 @@ contract Lottery {
         return numberToPlayers[_number];
     }
 
+    // Helper function to generate commitment off-chain
+    function generateCommitment(uint8 _winningNumber, bytes32 _secret)
+        external
+        view
+        returns (bytes32)
+    {
+        return keccak256(abi.encodePacked(_winningNumber, _secret, msg.sender));
+    }
+
     function _onlyOwner() internal view {
         require(msg.sender == owner, NotOwner());
     }
 
     function _duringGame() internal view {
-        require(startBlock != 0 && uint64(block.number) >= startBlock && uint64(block.number) < startBlock + GAME_DURATION, NotDuringGame());
+        require(
+            startBlock != 0 && uint64(block.number) >= startBlock && uint64(block.number) < startBlock + GAME_DURATION,
+            NotDuringGame()
+        );
     }
 
     function _afterGame() internal view {
