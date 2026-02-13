@@ -33,18 +33,30 @@ contract Lottery {
     GameResult public result;
     
     modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
+        _onlyOwner();
         _;
+    }
+    
+    function _onlyOwner() internal view {
+        require(msg.sender == owner, "Not owner");
     }
     
     modifier duringGame() {
-        require(block.number >= startBlock && block.number < startBlock + GAME_DURATION, "Not during game");
+        _duringGame();
         _;
     }
     
+    function _duringGame() internal view {
+        require(block.number >= startBlock && block.number < startBlock + GAME_DURATION, "Not during game");
+    }
+    
     modifier afterGame() {
-        require(block.number >= startBlock + GAME_DURATION, "Game not ended");
+        _afterGame();
         _;
+    }
+    
+    function _afterGame() internal view {
+        require(block.number >= startBlock + GAME_DURATION, "Game not ended");
     }
     
     constructor() {
