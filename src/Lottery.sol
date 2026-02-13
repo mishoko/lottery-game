@@ -8,6 +8,33 @@ interface IERC20 {
 }
 
 contract Lottery {
+    struct UserInfo {
+        uint8 luckyNumber;
+        bool hasPlayed;
+        bool claimed;
+    }
+
+    struct GameResult {
+        uint8 winningNumber;
+        bool isRevealed;
+        uint256 winningDistance;
+        uint256 prizePerWinner;
+    }
+
+    IERC20 public constant DAI = IERC20(0x1111111111111111111111111111111111111111);
+    uint64 public constant GAME_DURATION = 100;
+    uint256 public constant BET_AMOUNT = 1e18; // 1 DAI
+
+    address public immutable owner;
+    uint64 public startBlock;
+
+    GameResult public result;
+    uint256 public totalPlayers;
+
+    mapping(address => UserInfo) public users;
+    mapping(uint8 => address[]) public numberToPlayers;
+
+    // ============ Errors ============
     error NotOwner();
     error NotDuringGame();
     error GameNotEnded();
@@ -21,69 +48,31 @@ contract Lottery {
     error DidNotPlay();
     error AlreadyClaimed();
     error NotWinner();
-    
-    IERC20 public constant DAI = IERC20(0x1111111111111111111111111111111111111111); // whatever the DAI address is on respective chain
-    
-    address public owner;
-    uint64 public startBlock; // can store blocks for billions of years
-    uint64 public constant GAME_DURATION = 100;
-    uint256 public constant BET_AMOUNT = 1e18; // 1 DAI
-    
-    struct UserInfo {
-        uint8 luckyNumber;
-        bool hasPlayed;
-        bool claimed;
+
+    constructor() {
+        owner = msg.sender;
     }
 
-    mapping(address => UserInfo) public users;
-    mapping(uint8 => address[]) public numberToPlayers;
-    
-    struct GameResult {
-        uint8 winningNumber;
-        bool isRevealed;
-        uint256 winningDistance;
-        uint256 prizePerWinner;
-    }
-    GameResult public result;
-    
-    uint256 public totalPlayers;
-    
     modifier onlyOwner() {
         _onlyOwner();
         _;
     }
-    
-    function _onlyOwner() internal view {
-        require(msg.sender == owner, NotOwner());
-    }
-    
+
     modifier duringGame() {
         _duringGame();
         _;
     }
-    
-    function _duringGame() internal view {
-        require(uint64(block.number) >= startBlock && uint64(block.number) < startBlock + GAME_DURATION, NotDuringGame());
-    }
-    
+
     modifier afterGame() {
         _afterGame();
         _;
     }
-    
-    function _afterGame() internal view {
-        require(uint64(block.number) >= startBlock + GAME_DURATION, GameNotEnded());
-    }
-    
-    constructor() {
-        owner = msg.sender;
-    }
-    
+
     function start() external onlyOwner {
         require(startBlock == 0, AlreadyStarted());
         startBlock = uint64(block.number);
     }
-    
+
     function bet(uint8 _luckyNumber) external duringGame {
         _validateNumber(_luckyNumber);
         require(!users[msg.sender].hasPlayed, AlreadyPlayed());
@@ -97,7 +86,7 @@ contract Lottery {
         unchecked { ++totalPlayers; }
         require(DAI.transferFrom(msg.sender, address(this), BET_AMOUNT), TransferFailed());
     }
-    
+
     function revealNumber(uint8 _winningNumber) external onlyOwner afterGame {
         require(!result.isRevealed, AlreadyRevealed());
         _validateNumber(_winningNumber);
@@ -127,7 +116,7 @@ contract Lottery {
         result.prizePerWinner = (totalPlayers * BET_AMOUNT) / winnerCount;
         result.isRevealed = true;
     }
-    
+
     function claim() external {
         GameResult memory gameResult = result;
         require(gameResult.isRevealed, NotRevealed());
@@ -140,20 +129,32 @@ contract Lottery {
         user.claimed = true;
         require(DAI.transfer(msg.sender, gameResult.prizePerWinner), TransferFailed());
     }
-    
+
+    function getPlayerCount() external view returns (uint256) {
+        return totalPlayers;
+    }
+
+    function getPlayersByNumber(uint8 _number) external view returns (address[] memory) {
+        return numberToPlayers[_number];
+    }
+
+    function _onlyOwner() internal view {
+        require(msg.sender == owner, NotOwner());
+    }
+
+    function _duringGame() internal view {
+        require(uint64(block.number) >= startBlock && uint64(block.number) < startBlock + GAME_DURATION, NotDuringGame());
+    }
+
+    function _afterGame() internal view {
+        require(uint64(block.number) >= startBlock + GAME_DURATION, GameNotEnded());
+    }
+
     function _distance(uint8 a, uint8 b) internal pure returns (uint256) {
         return a > b ? a - b : b - a;
     }
 
     function _validateNumber(uint8 _number) internal pure {
         require(_number >= 1 && _number <= 100, InvalidNumber());
-    }
-    
-    function getPlayerCount() external view returns (uint256) {
-        return totalPlayers;
-    }
-    
-    function getPlayersByNumber(uint8 _number) external view returns (address[] memory) {
-        return numberToPlayers[_number];
     }
 }
