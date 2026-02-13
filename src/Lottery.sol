@@ -85,7 +85,7 @@ contract Lottery {
     }
     
     function bet(uint8 _luckyNumber) external duringGame {
-        require(_luckyNumber >= 1 && _luckyNumber <= 100, InvalidNumber());
+        _validateNumber(_luckyNumber);
         require(!users[msg.sender].hasPlayed, AlreadyPlayed());
 
         users[msg.sender] = UserInfo({
@@ -100,7 +100,7 @@ contract Lottery {
     
     function revealNumber(uint8 _winningNumber) external onlyOwner afterGame {
         require(!result.isRevealed, AlreadyRevealed());
-        require(_winningNumber >= 1 && _winningNumber <= 100, InvalidNumber());
+        _validateNumber(_winningNumber);
 
         uint256 minDistance = type(uint256).max;
         uint256 winnerCount = 0;
@@ -141,6 +141,10 @@ contract Lottery {
     
     function _distance(uint8 a, uint8 b) internal pure returns (uint256) {
         return a > b ? a - b : b - a;
+    }
+
+    function _validateNumber(uint8 _number) internal pure {
+        require(_number >= 1 && _number <= 100, InvalidNumber());
     }
     
     function getPlayerCount() external view returns (uint256) {
