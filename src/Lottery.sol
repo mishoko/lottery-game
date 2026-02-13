@@ -107,13 +107,14 @@ contract Lottery {
 
         // Check all possible numbers 1-100 (constant 100 iterations vs O(n) players)
         for (uint8 num = 1; num <= 100; ) {
-            if (numberToPlayers[num].length > 0) {
+            uint256 count = numberToPlayers[num].length;
+            if (count > 0) {
                 uint256 distance = _distance(num, _winningNumber);
                 if (distance < minDistance) {
                     minDistance = distance;
-                    winnerCount = numberToPlayers[num].length;
+                    winnerCount = count;
                 } else if (distance == minDistance) {
-                    winnerCount += numberToPlayers[num].length;
+                    winnerCount += count;
                 }
             }
             unchecked { ++num; }
@@ -128,15 +129,16 @@ contract Lottery {
     }
     
     function claim() external {
-        require(result.isRevealed, NotRevealed());
+        GameResult memory gameResult = result;
+        require(gameResult.isRevealed, NotRevealed());
 
         UserInfo storage user = users[msg.sender];
         require(user.hasPlayed, DidNotPlay());
         require(!user.claimed, AlreadyClaimed());
-        require(_distance(user.luckyNumber, result.winningNumber) == result.winningDistance, NotWinner());
+        require(_distance(user.luckyNumber, gameResult.winningNumber) == gameResult.winningDistance, NotWinner());
 
         user.claimed = true;
-        require(DAI.transfer(msg.sender, result.prizePerWinner), TransferFailed());
+        require(DAI.transfer(msg.sender, gameResult.prizePerWinner), TransferFailed());
     }
     
     function _distance(uint8 a, uint8 b) internal pure returns (uint256) {
