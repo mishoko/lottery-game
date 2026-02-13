@@ -8,6 +8,20 @@ interface IERC20 {
 }
 
 contract Lottery {
+    error NotOwner();
+    error NotDuringGame();
+    error GameNotEnded();
+    error AlreadyStarted();
+    error InvalidNumber();
+    error AlreadyPlayed();
+    error TransferFailed();
+    error AlreadyRevealed();
+    error NoPlayers();
+    error NotRevealed();
+    error DidNotPlay();
+    error AlreadyClaimed();
+    error NotWinner();
+    
     IERC20 public constant DAI = IERC20(0x1111111111111111111111111111111111111111); // whatever the DAI address is on respective chain
     
     address public owner;
@@ -38,7 +52,7 @@ contract Lottery {
     }
     
     function _onlyOwner() internal view {
-        require(msg.sender == owner, "Not owner");
+        require(msg.sender == owner, NotOwner());
     }
     
     modifier duringGame() {
@@ -47,7 +61,7 @@ contract Lottery {
     }
     
     function _duringGame() internal view {
-        require(uint64(block.number) >= startBlock && uint64(block.number) < startBlock + GAME_DURATION, "Not during game");
+        require(uint64(block.number) >= startBlock && uint64(block.number) < startBlock + GAME_DURATION, NotDuringGame());
     }
     
     modifier afterGame() {
@@ -56,7 +70,7 @@ contract Lottery {
     }
     
     function _afterGame() internal view {
-        require(uint64(block.number) >= startBlock + GAME_DURATION, "Game not ended");
+        require(uint64(block.number) >= startBlock + GAME_DURATION, GameNotEnded());
     }
     
     constructor() {
@@ -64,13 +78,13 @@ contract Lottery {
     }
     
     function start() external onlyOwner {
-        require(startBlock == 0, "Already started");
+        require(startBlock == 0, AlreadyStarted());
         startBlock = uint64(block.number);
     }
     
     function bet(uint8 _luckyNumber) external duringGame {
-        require(_luckyNumber >= 1 && _luckyNumber <= 100, "Number 1-100");
-        require(!users[msg.sender].hasPlayed, "Already played");
+        require(_luckyNumber >= 1 && _luckyNumber <= 100, InvalidNumber());
+        require(!users[msg.sender].hasPlayed, AlreadyPlayed());
         
         users[msg.sender] = UserInfo({
             luckyNumber: _luckyNumber,
@@ -78,17 +92,16 @@ contract Lottery {
             claimed: false
         });
         players.push(msg.sender);
-        
-        require(DAI.transferFrom(msg.sender, address(this), BET_AMOUNT), "Transfer failed");
+        require(DAI.transferFrom(msg.sender, address(this), BET_AMOUNT), TransferFailed());
     }
     
     function revealNumber(uint8 _winningNumber) external onlyOwner afterGame {
-        require(!result.isRevealed, "Already revealed");
-        require(_winningNumber >= 1 && _winningNumber <= 100, "Invalid number");
-        
+        require(!result.isRevealed, AlreadyRevealed());
+        require(_winningNumber >= 1 && _winningNumber <= 100, InvalidNumber());
+
         uint256 minDistance = type(uint256).max;
         uint256 winnerCount = 0;
-        
+
         for (uint256 i = 0; i < players.length; ) {
             uint256 distance = _distance(users[players[i]].luckyNumber, _winningNumber);
             if (distance < minDistance) {
@@ -99,9 +112,9 @@ contract Lottery {
             }
             unchecked { ++i; }
         }
-        
-        require(winnerCount > 0, "No players");
-        
+
+        require(winnerCount > 0, NoPlayers());
+
         result.winningNumber = _winningNumber;
         result.winningDistance = minDistance;
         result.prizePerWinner = (players.length * BET_AMOUNT) / winnerCount;
@@ -109,15 +122,15 @@ contract Lottery {
     }
     
     function claim() external {
-        require(result.isRevealed, "Not revealed");
-        
+        require(result.isRevealed, NotRevealed());
+
         UserInfo storage user = users[msg.sender];
-        require(user.hasPlayed, "Did not play");
-        require(!user.claimed, "Already claimed");
-        require(_distance(user.luckyNumber, result.winningNumber) == result.winningDistance, "Not a winner");
-        
+        require(user.hasPlayed, DidNotPlay());
+        require(!user.claimed, AlreadyClaimed());
+        require(_distance(user.luckyNumber, result.winningNumber) == result.winningDistance, NotWinner());
+
         user.claimed = true;
-        require(DAI.transfer(msg.sender, result.prizePerWinner), "Transfer failed");
+        require(DAI.transfer(msg.sender, result.prizePerWinner), TransferFailed());
     }
     
     function _distance(uint8 a, uint8 b) internal pure returns (uint256) {
