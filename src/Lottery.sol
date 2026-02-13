@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.19;
+
+interface IERC20 {
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 amount) external returns (bool);
+}
+
+contract Lottery {
+    IERC20 public constant DAI = IERC20(0x1111111111111111111111111111111111111111);
+    
+    address public owner;
+    uint256 public startBlock;
+    uint256 public constant GAME_DURATION = 100;
+    uint256 public constant BET_AMOUNT = 1e18; // 1 DAI
+    
+    struct UserInfo {
+        uint8 luckyNumber;
+        bool hasPlayed;
+        bool claimed;
+    }
+    
+    mapping(address => UserInfo) public users;
+    address[] public players;
+    
+    uint8 public winningNumber;
+    bool public isRevealed;
+    uint256 public winningDistance;
+    uint256 public prizePerWinner;
+    
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+    
+    modifier duringGame() {
+        require(block.number >= startBlock && block.number < startBlock + GAME_DURATION, "Not during game");
+        _;
+    }
+    
+    modifier afterGame() {
+        require(block.number >= startBlock + GAME_DURATION, "Game not ended");
+        _;
+    }
+    
+    constructor() {
+        owner = msg.sender;
+    }
+    
+    function start() external onlyOwner {
+        require(startBlock == 0, "Already started");
+        startBlock = block.number;
+    }
+    
+    function bet(uint8 _luckyNumber) external duringGame {
+        require(_luckyNumber >= 1 && _luckyNumber <= 100, "Number 1-100");
+        require(!users[msg.sender].hasPlayed, "Already played");
+        
+        users[msg.sender] = UserInfo({
+            luckyNumber: _luckyNumber,
+            hasPlayed: true,
+            claimed: false
+        });
+        players.push(msg.sender);
+        
+        require(DAI.transferFrom(msg.sender, address(this), BET_AMOUNT), "Transfer failed");
+    }
+    
+    function revealNumber(uint8 _winningNumber) external onlyOwner afterGame {
+        require(!isRevealed, "Already revealed");
+        require(_winningNumber >= 1 && _winningNumber <= 100, "Invalid number");
+        
+        uint256 minDistance = type(uint256).max;
+        uint256 winnerCount = 0;
+        
+        for (uint256 i = 0; i < players.length; i++) {
+            uint256 distance = _distance(users[players[i]].luckyNumber, _winningNumber);
+            if (distance < minDistance) {
+                minDistance = distance;
+                winnerCount = 1;
+            } else if (distance == minDistance) {
+                winnerCount++;
+            }
+        }
+        
+        require(winnerCount > 0, "No players");
+        
+        winningNumber = _winningNumber;
+        winningDistance = minDistance;
+        prizePerWinner = (players.length * BET_AMOUNT) / winnerCount;
+        isRevealed = true;
+    }
+    
+    function claim() external {
+        require(isRevealed, "Not revealed");
+        
+        UserInfo storage user = users[msg.sender];
+        require(user.hasPlayed, "Did not play");
+        require(!user.claimed, "Already claimed");
+        require(_distance(user.luckyNumber, winningNumber) == winningDistance, "Not a winner");
+        
+        user.claimed = true;
+        require(DAI.transfer(msg.sender, prizePerWinner), "Transfer failed");
+    }
+    
+    function _distance(uint8 a, uint8 b) internal pure returns (uint256) {
+        return a > b ? a - b : b - a;
+    }
+    
+    function getPlayers() external view returns (address[] memory) {
+        return players;
+    }
+    
+    function getPlayerCount() external view returns (uint256) {
+        return players.length;
+    }
+}
