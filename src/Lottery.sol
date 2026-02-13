@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.19;
+pragma solidity 0.8.30;
 
 interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
@@ -8,7 +8,7 @@ interface IERC20 {
 }
 
 contract Lottery {
-    IERC20 public constant DAI = IERC20(0x1111111111111111111111111111111111111111);
+    IERC20 public constant DAI = IERC20(0x1111111111111111111111111111111111111111); // whatever the DAI address is on respective chain
     
     address public owner;
     uint256 public startBlock;
@@ -24,10 +24,13 @@ contract Lottery {
     mapping(address => UserInfo) public users;
     address[] public players;
     
-    uint8 public winningNumber;
-    bool public isRevealed;
-    uint256 public winningDistance;
-    uint256 public prizePerWinner;
+    struct GameResult {
+        uint8 winningNumber;
+        bool isRevealed;
+        uint256 winningDistance;
+        uint256 prizePerWinner;
+    }
+    GameResult public result;
     
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
@@ -68,13 +71,13 @@ contract Lottery {
     }
     
     function revealNumber(uint8 _winningNumber) external onlyOwner afterGame {
-        require(!isRevealed, "Already revealed");
+        require(!result.isRevealed, "Already revealed");
         require(_winningNumber >= 1 && _winningNumber <= 100, "Invalid number");
         
         uint256 minDistance = type(uint256).max;
         uint256 winnerCount = 0;
         
-        for (uint256 i = 0; i < players.length; i++) {
+        for (uint256 i = 0; i < players.length; ) {
             uint256 distance = _distance(users[players[i]].luckyNumber, _winningNumber);
             if (distance < minDistance) {
                 minDistance = distance;
@@ -82,26 +85,27 @@ contract Lottery {
             } else if (distance == minDistance) {
                 winnerCount++;
             }
+            unchecked { ++i; }
         }
         
         require(winnerCount > 0, "No players");
         
-        winningNumber = _winningNumber;
-        winningDistance = minDistance;
-        prizePerWinner = (players.length * BET_AMOUNT) / winnerCount;
-        isRevealed = true;
+        result.winningNumber = _winningNumber;
+        result.winningDistance = minDistance;
+        result.prizePerWinner = (players.length * BET_AMOUNT) / winnerCount;
+        result.isRevealed = true;
     }
     
     function claim() external {
-        require(isRevealed, "Not revealed");
+        require(result.isRevealed, "Not revealed");
         
         UserInfo storage user = users[msg.sender];
         require(user.hasPlayed, "Did not play");
         require(!user.claimed, "Already claimed");
-        require(_distance(user.luckyNumber, winningNumber) == winningDistance, "Not a winner");
+        require(_distance(user.luckyNumber, result.winningNumber) == result.winningDistance, "Not a winner");
         
         user.claimed = true;
-        require(DAI.transfer(msg.sender, prizePerWinner), "Transfer failed");
+        require(DAI.transfer(msg.sender, result.prizePerWinner), "Transfer failed");
     }
     
     function _distance(uint8 a, uint8 b) internal pure returns (uint256) {
