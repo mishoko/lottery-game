@@ -11,8 +11,8 @@ contract Lottery {
     IERC20 public constant DAI = IERC20(0x1111111111111111111111111111111111111111); // whatever the DAI address is on respective chain
     
     address public owner;
-    uint256 public startBlock;
-    uint256 public constant GAME_DURATION = 100;
+    uint64 public startBlock; // can store blocks for billions of years
+    uint64 public constant GAME_DURATION = 100;
     uint256 public constant BET_AMOUNT = 1e18; // 1 DAI
     
     struct UserInfo {
@@ -47,7 +47,7 @@ contract Lottery {
     }
     
     function _duringGame() internal view {
-        require(block.number >= startBlock && block.number < startBlock + GAME_DURATION, "Not during game");
+        require(uint64(block.number) >= startBlock && uint64(block.number) < startBlock + GAME_DURATION, "Not during game");
     }
     
     modifier afterGame() {
@@ -56,7 +56,7 @@ contract Lottery {
     }
     
     function _afterGame() internal view {
-        require(block.number >= startBlock + GAME_DURATION, "Game not ended");
+        require(uint64(block.number) >= startBlock + GAME_DURATION, "Game not ended");
     }
     
     constructor() {
@@ -65,7 +65,7 @@ contract Lottery {
     
     function start() external onlyOwner {
         require(startBlock == 0, "Already started");
-        startBlock = block.number;
+        startBlock = uint64(block.number);
     }
     
     function bet(uint8 _luckyNumber) external duringGame {
