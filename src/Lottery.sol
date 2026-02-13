@@ -24,6 +24,8 @@ contract Lottery {
     IERC20 public constant DAI = IERC20(0x1111111111111111111111111111111111111111);
     uint64 public constant GAME_DURATION = 100;
     uint256 public constant BET_AMOUNT = 1e18; // 1 DAI
+    uint8 public constant MIN_NUMBER = 1;
+    uint8 public constant MAX_NUMBER = 100;
 
     address public immutable owner;
     uint64 public startBlock;
@@ -34,7 +36,6 @@ contract Lottery {
     mapping(address => UserInfo) public users;
     mapping(uint8 => address[]) public numberToPlayers;
 
-    // ============ Errors ============
     error NotOwner();
     error NotDuringGame();
     error GameNotEnded();
@@ -94,8 +95,8 @@ contract Lottery {
         uint256 minDistance = type(uint256).max;
         uint256 winnerCount = 0;
 
-        // Check all possible numbers 1-100 (constant 100 iterations vs O(n) players)
-        for (uint8 num = 1; num <= 100; ) {
+        // Check all possible numbers MIN_NUMBER-MAX_NUMBER (constant MAX_NUMBER iterations vs O(n) players)
+        for (uint8 num = MIN_NUMBER; num <= MAX_NUMBER; ) {
             uint256 count = numberToPlayers[num].length;
             if (count > 0) {
                 uint256 distance = _distance(num, _winningNumber);
@@ -155,6 +156,6 @@ contract Lottery {
     }
 
     function _validateNumber(uint8 _number) internal pure {
-        require(_number >= 1 && _number <= 100, InvalidNumber());
+        require(_number >= MIN_NUMBER && _number <= MAX_NUMBER, InvalidNumber());
     }
 }
