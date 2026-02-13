@@ -154,11 +154,11 @@ contract Lottery {
         require(startBlock != 0, GameNotEnded());
         require(!result.isRevealed, InvalidReveal());
         require(block.number > startBlock + GAME_DURATION + REVEAL_DEADLINE, RevealDeadlineNotPassed());
-        
+
         UserInfo storage user = users[msg.sender];
         require(user.hasPlayed, DidNotPlay());
         require(!user.refunded, AlreadyRefunded());
-        
+
         user.refunded = true;
         require(dai.transfer(msg.sender, BET_AMOUNT), TransferFailed());
     }
@@ -172,11 +172,7 @@ contract Lottery {
     }
 
     // Helper function to generate commitment off-chain
-    function generateCommitment(uint8 _winningNumber, bytes32 _secret)
-        external
-        view
-        returns (bytes32)
-    {
+    function generateCommitment(uint8 _winningNumber, bytes32 _secret) external view returns (bytes32) {
         return keccak256(abi.encodePacked(_winningNumber, _secret, msg.sender));
     }
 
