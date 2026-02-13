@@ -34,9 +34,9 @@ contract Lottery {
         bool hasPlayed;
         bool claimed;
     }
-    
+
     mapping(address => UserInfo) public users;
-    address[] public players;
+    mapping(uint8 => address[]) public numberToPlayers;
     
     struct GameResult {
         uint8 winningNumber;
@@ -45,6 +45,8 @@ contract Lottery {
         uint256 prizePerWinner;
     }
     GameResult public result;
+    
+    uint256 public totalPlayers;
     
     modifier onlyOwner() {
         _onlyOwner();
@@ -85,13 +87,14 @@ contract Lottery {
     function bet(uint8 _luckyNumber) external duringGame {
         require(_luckyNumber >= 1 && _luckyNumber <= 100, InvalidNumber());
         require(!users[msg.sender].hasPlayed, AlreadyPlayed());
-        
+
         users[msg.sender] = UserInfo({
             luckyNumber: _luckyNumber,
             hasPlayed: true,
             claimed: false
         });
-        players.push(msg.sender);
+        numberToPlayers[_luckyNumber].push(msg.sender);
+        unchecked { ++totalPlayers; }
         require(DAI.transferFrom(msg.sender, address(this), BET_AMOUNT), TransferFailed());
     }
     
@@ -102,22 +105,25 @@ contract Lottery {
         uint256 minDistance = type(uint256).max;
         uint256 winnerCount = 0;
 
-        for (uint256 i = 0; i < players.length; ) {
-            uint256 distance = _distance(users[players[i]].luckyNumber, _winningNumber);
-            if (distance < minDistance) {
-                minDistance = distance;
-                winnerCount = 1;
-            } else if (distance == minDistance) {
-                winnerCount++;
+        // Check all possible numbers 1-100 (constant 100 iterations vs O(n) players)
+        for (uint8 num = 1; num <= 100; ) {
+            if (numberToPlayers[num].length > 0) {
+                uint256 distance = _distance(num, _winningNumber);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    winnerCount = numberToPlayers[num].length;
+                } else if (distance == minDistance) {
+                    winnerCount += numberToPlayers[num].length;
+                }
             }
-            unchecked { ++i; }
+            unchecked { ++num; }
         }
 
         require(winnerCount > 0, NoPlayers());
 
         result.winningNumber = _winningNumber;
         result.winningDistance = minDistance;
-        result.prizePerWinner = (players.length * BET_AMOUNT) / winnerCount;
+        result.prizePerWinner = (totalPlayers * BET_AMOUNT) / winnerCount;
         result.isRevealed = true;
     }
     
@@ -137,11 +143,11 @@ contract Lottery {
         return a > b ? a - b : b - a;
     }
     
-    function getPlayers() external view returns (address[] memory) {
-        return players;
+    function getPlayerCount() external view returns (uint256) {
+        return totalPlayers;
     }
     
-    function getPlayerCount() external view returns (uint256) {
-        return players.length;
+    function getPlayersByNumber(uint8 _number) external view returns (address[] memory) {
+        return numberToPlayers[_number];
     }
 }
