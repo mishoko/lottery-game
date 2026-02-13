@@ -12,6 +12,7 @@ contract Lottery {
         uint8 luckyNumber;
         bool hasPlayed;
         bool claimed;
+        bool refunded;
     }
 
     struct GameResult {
@@ -22,6 +23,7 @@ contract Lottery {
     }
 
     uint64 public constant GAME_DURATION = 100;
+    uint64 public constant REVEAL_DEADLINE = 50; // 50 blocks after game ends to reveal
     uint256 public constant BET_AMOUNT = 1e18; // 1 DAI
     uint8 public constant MIN_NUMBER = 1;
     uint8 public constant MAX_NUMBER = 100;
@@ -52,6 +54,10 @@ contract Lottery {
     error NotWinner();
     error AlreadyCommitted();
     error NotCommitted();
+    error RevealDeadlinePassed();
+    error RevealDeadlineNotPassed();
+    error AlreadyRefunded();
+    error CommitmentNotSet();
 
     constructor(address _dai) {
         owner = msg.sender;
@@ -81,10 +87,11 @@ contract Lottery {
     }
 
     function bet(uint8 _luckyNumber) external duringGame {
+        require(commitment != bytes32(0), CommitmentNotSet());
         _validateNumber(_luckyNumber);
         require(!users[msg.sender].hasPlayed, AlreadyPlayed());
 
-        users[msg.sender] = UserInfo({luckyNumber: _luckyNumber, hasPlayed: true, claimed: false});
+        users[msg.sender] = UserInfo({luckyNumber: _luckyNumber, hasPlayed: true, claimed: false, refunded: false});
         numberToPlayers[_luckyNumber].push(msg.sender);
         unchecked {
             ++totalPlayers;
@@ -94,6 +101,7 @@ contract Lottery {
 
     function revealNumber(uint8 _winningNumber, bytes32 _secret) external onlyOwner afterGame {
         require(!result.isRevealed, InvalidReveal());
+        require(block.number <= startBlock + GAME_DURATION + REVEAL_DEADLINE, RevealDeadlinePassed());
         _validateNumber(_winningNumber);
 
         // Verify the reveal matches the commitment
@@ -139,6 +147,20 @@ contract Lottery {
 
         user.claimed = true;
         require(dai.transfer(msg.sender, gameResult.prizePerWinner), TransferFailed());
+    }
+
+    // Allow players to refund if admin doesn't reveal in time
+    function refund() external {
+        require(startBlock != 0, GameNotEnded());
+        require(!result.isRevealed, InvalidReveal());
+        require(block.number > startBlock + GAME_DURATION + REVEAL_DEADLINE, RevealDeadlineNotPassed());
+        
+        UserInfo storage user = users[msg.sender];
+        require(user.hasPlayed, DidNotPlay());
+        require(!user.refunded, AlreadyRefunded());
+        
+        user.refunded = true;
+        require(dai.transfer(msg.sender, BET_AMOUNT), TransferFailed());
     }
 
     function getPlayerCount() external view returns (uint256) {

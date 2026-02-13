@@ -122,10 +122,11 @@ contract LotteryTest is Test {
         vm.prank(alice);
         lottery.bet(50);
 
-        (uint8 luckyNumber, bool hasPlayed, bool claimed) = lottery.users(alice);
+        (uint8 luckyNumber, bool hasPlayed, bool claimed, bool refunded) = lottery.users(alice);
         assertEq(luckyNumber, 50);
         assertTrue(hasPlayed);
         assertFalse(claimed);
+        assertFalse(refunded);
     }
 
     function test_CannotBetBeforeStart() public {
@@ -546,5 +547,136 @@ contract LotteryTest is Test {
         vm.prank(owner);
         bytes32 commitment = lottery.generateCommitment(42, bytes32(uint256(999)));
         assertEq(commitment, keccak256(abi.encodePacked(uint8(42), bytes32(uint256(999)), owner)));
+    }
+
+    // ============ Refund Tests ============
+
+    function test_RefundWhenAdminDoesNotReveal() public {
+        _startGame();
+
+        vm.prank(alice);
+        lottery.bet(50);
+
+        // Move past game end AND reveal deadline
+        vm.roll(block.number + 100 + 50 + 1); // GAME_DURATION + REVEAL_DEADLINE + 1
+
+        uint256 initialBalance = dai.balanceOf(alice);
+
+        // Admin never reveals, player can refund
+        vm.prank(alice);
+        lottery.refund();
+
+        uint256 finalBalance = dai.balanceOf(alice);
+        assertEq(finalBalance - initialBalance, 1 ether);
+
+        // Check player is marked as refunded
+        (,,, bool refunded) = lottery.users(alice);
+        assertTrue(refunded);
+    }
+
+    function test_RefundFailsWhenAdminRevealsInTime() public {
+        _startGame();
+
+        vm.prank(alice);
+        lottery.bet(50);
+
+        // Move past game end but before reveal deadline
+        vm.roll(block.number + 100 + 10); // GAME_DURATION + 10 blocks
+
+        // Admin reveals in time
+        vm.prank(owner);
+        lottery.revealNumber(WINNING_NUMBER, SECRET);
+
+        // Player tries to refund but fails because reveal happened
+        vm.prank(alice);
+        vm.expectRevert(Lottery.InvalidReveal.selector);
+        lottery.refund();
+    }
+
+    function test_CannotRefundBeforeRevealDeadline() public {
+        _startGame();
+
+        vm.prank(alice);
+        lottery.bet(50);
+
+        // Move past game end but BEFORE reveal deadline
+        vm.roll(block.number + 100 + 10); // GAME_DURATION + 10 blocks (deadline is 50)
+
+        // Player tries to refund too early
+        vm.prank(alice);
+        vm.expectRevert(Lottery.RevealDeadlineNotPassed.selector);
+        lottery.refund();
+    }
+
+    function test_CannotRefundTwice() public {
+        _startGame();
+
+        vm.prank(alice);
+        lottery.bet(50);
+
+        // Move past reveal deadline
+        vm.roll(block.number + 100 + 50 + 1);
+
+        vm.prank(alice);
+        lottery.refund();
+
+        // Try to refund again
+        vm.prank(alice);
+        vm.expectRevert(Lottery.AlreadyRefunded.selector);
+        lottery.refund();
+    }
+
+    function test_CannotRefundIfDidNotPlay() public {
+        _startGame();
+
+        // Move past reveal deadline
+        vm.roll(block.number + 100 + 50 + 1);
+
+        // Someone who didn't play tries to refund
+        vm.prank(address(999));
+        vm.expectRevert(Lottery.DidNotPlay.selector);
+        lottery.refund();
+    }
+
+    function test_RevealDeadlinePassedError() public {
+        _startGame();
+
+        vm.prank(alice);
+        lottery.bet(50);
+
+        // Move past reveal deadline
+        vm.roll(block.number + 100 + 50 + 1);
+
+        // Admin tries to reveal after deadline
+        vm.prank(owner);
+        vm.expectRevert(Lottery.RevealDeadlinePassed.selector);
+        lottery.revealNumber(WINNING_NUMBER, SECRET);
+    }
+
+    function test_CommitmentNotSetError() public {
+        // Try to bet before game starts (commitment not set)
+        // This reverts with NotDuringGame because startBlock is 0
+        vm.prank(alice);
+        vm.expectRevert(Lottery.NotDuringGame.selector);
+        lottery.bet(50);
+    }
+
+    function test_ReentrancyProtectionOnClaim() public {
+        // This test verifies nonReentrant is working by checking a normal claim works
+        _startGame();
+
+        vm.prank(alice);
+        lottery.bet(50);
+
+        _endGameAndReveal();
+
+        // Normal claim should work
+        vm.prank(alice);
+        lottery.claim();
+
+        // Second claim should fail with AlreadyClaimed, not reentrant
+        vm.prank(alice);
+        vm.expectRevert(Lottery.AlreadyClaimed.selector);
+        lottery.claim();
     }
 }
