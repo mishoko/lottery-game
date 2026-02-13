@@ -21,12 +21,12 @@ contract Lottery {
         uint256 prizePerWinner;
     }
 
-    IERC20 public constant DAI = IERC20(0x1111111111111111111111111111111111111111);
     uint64 public constant GAME_DURATION = 100;
     uint256 public constant BET_AMOUNT = 1e18; // 1 DAI
     uint8 public constant MIN_NUMBER = 1;
     uint8 public constant MAX_NUMBER = 100;
 
+    IERC20 public immutable dai;
     address public immutable owner;
     uint64 public startBlock;
 
@@ -50,8 +50,9 @@ contract Lottery {
     error AlreadyClaimed();
     error NotWinner();
 
-    constructor() {
+    constructor(address _dai) {
         owner = msg.sender;
+        dai = IERC20(_dai);
     }
 
     modifier onlyOwner() {
@@ -85,7 +86,7 @@ contract Lottery {
         });
         numberToPlayers[_luckyNumber].push(msg.sender);
         unchecked { ++totalPlayers; }
-        require(DAI.transferFrom(msg.sender, address(this), BET_AMOUNT), TransferFailed());
+        require(dai.transferFrom(msg.sender, address(this), BET_AMOUNT), TransferFailed());
     }
 
     function revealNumber(uint8 _winningNumber) external onlyOwner afterGame {
@@ -128,7 +129,7 @@ contract Lottery {
         require(_distance(user.luckyNumber, gameResult.winningNumber) == gameResult.winningDistance, NotWinner());
 
         user.claimed = true;
-        require(DAI.transfer(msg.sender, gameResult.prizePerWinner), TransferFailed());
+        require(dai.transfer(msg.sender, gameResult.prizePerWinner), TransferFailed());
     }
 
     function getPlayerCount() external view returns (uint256) {
@@ -144,7 +145,7 @@ contract Lottery {
     }
 
     function _duringGame() internal view {
-        require(uint64(block.number) >= startBlock && uint64(block.number) < startBlock + GAME_DURATION, NotDuringGame());
+        require(startBlock != 0 && uint64(block.number) >= startBlock && uint64(block.number) < startBlock + GAME_DURATION, NotDuringGame());
     }
 
     function _afterGame() internal view {
